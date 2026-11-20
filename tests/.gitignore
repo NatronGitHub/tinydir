@@ -35,6 +35,7 @@ Win32/
 *.vcxproj.filters
 *.VC.*
 *.sln
+.vs/
 
 # Linux
 Makefile
@@ -42,6 +43,7 @@ Makefile
 # OS X
 CMakeScripts/
 *.xcodeproj
+build/
 
 # Test files
 *.tmp
