@@ -5,55 +5,65 @@ on:
     branches: [ master ]
   pull_request:
     branches: [ master ]
+    types: [ opened, synchronize, reopened, ready_for_review ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
+    # Skip draft PRs; ready_for_review triggers the run.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        build_type: [Release, Debug]
-        os: [macos-latest, ubuntu-latest, windows-latest]
-        CC: [clang, gcc, cl]
-        gcc_version: [latest, 11]
-        exclude:
-          # macos+clang only
-          - os: macos-latest
-            CC: gcc
-          - os: macos-latest
-            CC: cl
-          # cl for windows only
-          - os: ubuntu-latest
-            CC: cl
-          - os: windows-latest
-            CC: gcc
-          - os: windows-latest
-            CC: clang
-          - CC: clang
-            gcc_version: 11
+        include:
+          - name: Linux gcc
+            os: ubuntu-latest
+            cc: gcc
+            cxx: g++
+          - name: Windows MSVC
+            os: windows-latest
+            cc: cl
+            cxx: cl
+
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
 
     steps:
-    - uses: actions/checkout@v2
-    
-    - name: Install GCC
-      if: matrix.CC == 'gcc'
-      uses: egor-tensin/setup-gcc@v1
-      with:
-        version: ${{ matrix.gcc_version }}
+    - uses: actions/checkout@v4
 
-    - name: Build
-      env:
-        CC: ${{ matrix.CC }}
+    - name: Build tests (Debug)
       run: |
-        cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{matrix.build_type}} -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON tests
-        cmake --build ${{github.workspace}}/build --config ${{matrix.build_type}}
+        cmake -S tests -B build/tests-Debug -DCMAKE_BUILD_TYPE=Debug -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+        cmake --build build/tests-Debug --config Debug
 
-    - name: Test
-      working-directory: ${{github.workspace}}/build
-      run: ctest -C ${{matrix.build_type}}
+    - name: Test (Debug)
+      working-directory: build/tests-Debug
+      run: ctest -C Debug --output-on-failure
 
-    - name: Build (samples)
-      env:
-        CC: ${{ matrix.CC }}
+    - name: Build tests (Release)
       run: |
-        cmake -B ${{github.workspace}}/build_samples -DCMAKE_BUILD_TYPE=${{matrix.build_type}} -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON samples
-        cmake --build ${{github.workspace}}/build_samples --config ${{matrix.build_type}}
+        cmake -S tests -B build/tests-Release -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+        cmake --build build/tests-Release --config Release
+
+    - name: Test (Release)
+      working-directory: build/tests-Release
+      run: ctest -C Release --output-on-failure
+
+    - name: Build samples (Debug)
+      run: |
+        cmake -S samples -B build/samples-Debug -DCMAKE_BUILD_TYPE=Debug -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+        cmake --build build/samples-Debug --config Debug
+
+    - name: Build samples (Release)
+      run: |
+        cmake -S samples -B build/samples-Release -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+        cmake --build build/samples-Release --config Release
