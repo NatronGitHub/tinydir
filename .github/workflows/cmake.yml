@@ -1,0 +1,69 @@
+name: CMake
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+    types: [ opened, synchronize, reopened, ready_for_review ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    # Skip draft PRs; ready_for_review triggers the run.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux gcc
+            os: ubuntu-latest
+            cc: gcc
+            cxx: g++
+          - name: Windows MSVC
+            os: windows-latest
+            cc: cl
+            cxx: cl
+
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Build tests (Debug)
+      run: |
+        cmake -S tests -B build/tests-Debug -DCMAKE_BUILD_TYPE=Debug -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+        cmake --build build/tests-Debug --config Debug
+
+    - name: Test (Debug)
+      working-directory: build/tests-Debug
+      run: ctest -C Debug --output-on-failure
+
+    - name: Build tests (Release)
+      run: |
+        cmake -S tests -B build/tests-Release -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+        cmake --build build/tests-Release --config Release
+
+    - name: Test (Release)
+      working-directory: build/tests-Release
+      run: ctest -C Release --output-on-failure
+
+    - name: Build samples (Debug)
+      run: |
+        cmake -S samples -B build/samples-Debug -DCMAKE_BUILD_TYPE=Debug -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+        cmake --build build/samples-Debug --config Debug
+
+    - name: Build samples (Release)
+      run: |
+        cmake -S samples -B build/samples-Release -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+        cmake --build build/samples-Release --config Release
